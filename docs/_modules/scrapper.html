@@ -1,0 +1,507 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>scrapper &#8212; elnortescrapper 1.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '1.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="elnortescrapper 1.0.0 documentation" href="../index.html" />
+    <link rel="up" title="Module code" href="index.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head>
+  <body role="document">
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for scrapper</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Scrapper</span>
+
+<span class="sd">This module implements the Scrapper class, which is a web scrapper for real</span>
+<span class="sd">estate classified ads of El Norte Avisos de Ocasión.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">requests</span>
+<span class="kn">from</span> <span class="nn">lxml</span> <span class="k">import</span> <span class="n">html</span>
+<span class="kn">from</span> <span class="nn">bs4</span> <span class="k">import</span> <span class="n">BeautifulSoup</span>
+<span class="kn">from</span> <span class="nn">pandas</span> <span class="k">import</span> <span class="n">DataFrame</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="k">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">OrderedDict</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+
+<div class="viewcode-block" id="Scrapper"><a class="viewcode-back" href="../index.html#scrapper.Scrapper">[docs]</a><span class="k">class</span> <span class="nc">Scrapper</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Web scrapper for real estate classified ads of El Norte</span>
+<span class="sd">    Avisos de Ocasión www.avisosdeocasion.com website.</span>
+<span class="sd">    It works with the categories of houses for sale in states of Mexico.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; from reformascrapper import Scrapper</span>
+<span class="sd">        &gt;&gt;&gt; my_scrapper = Scrapper()</span>
+<span class="sd">        &gt;&gt;&gt; df = my_scrapper.scrap(&#39;venta_casas_cdmx&#39;, ad_limit=100)</span>
+<span class="sd">        Started web scraping</span>
+<span class="sd">        Progress: 100 scrapped ads</span>
+<span class="sd">        Finished web scraping</span>
+<span class="sd">        &gt;&gt;&gt; df.columns</span>
+<span class="sd">        Index([&#39;precio&#39;, &#39;zona&#39;, &#39;colonia&#39;, &#39;visitas&#39;, &#39;plantas&#39;,</span>
+<span class="sd">               &#39;m2_terreno&#39;, &#39;recámaras&#39;, &#39;baños&#39;, &#39;m2_constr&#39;, &#39;fecha_pub&#39;,</span>
+<span class="sd">               &#39;latitude&#39;, &#39;longitude&#39;, &#39;url&#39;],</span>
+<span class="sd">              dtype=&#39;object&#39;)</span>
+<span class="sd">        &gt;&gt;&gt; df_venta_casas.shape</span>
+<span class="sd">        (100, 13)</span>
+<span class="sd">        &gt;&gt;&gt; df[[&#39;precio&#39;,&#39;colonia&#39;, &#39;m2_constr&#39;]].head()</span>
+<span class="sd">                                              precio               colonia  m2_constr</span>
+<span class="sd">        timestamp                                                                    </span>
+<span class="sd">        2017-02-05 23:24:28.235641  11,800,000 pesos              AILES II        361</span>
+<span class="sd">        2017-02-05 23:24:32.084964   1,900,000 pesos  AMPLIACION MIGUEL HI        170</span>
+<span class="sd">        2017-02-05 23:24:32.687735   6,175,000 pesos  AMPLIACION MIGUEL HI        295</span>
+<span class="sd">        2017-02-05 23:24:33.266031   4,300,000 pesos  AMPLIACION MIGUEL HI        195</span>
+<span class="sd">        2017-02-05 23:24:34.186730   3,420,000 pesos  AMPLIACION MIGUEL HI        299</span>
+<span class="sd">        </span>
+<span class="sd">        &gt;&gt;&gt; my_scrapper.categories</span>
+<span class="sd">                                   category</span>
+<span class="sd">        0                  venta_casas_cdmx</span>
+<span class="sd">        1            venta_casas_nuevo_leon</span>
+<span class="sd">        2               venta_casas_jalisco</span>
+<span class="sd">        3        venta_casas_aguascalientes</span>
+<span class="sd">        4       venta_casas_baja_california</span>
+<span class="sd">        5   venta_casas_baja_california_sur</span>
+<span class="sd">        6              venta_casas_campeche</span>
+<span class="sd">        7               venta_casas_chiapas</span>
+<span class="sd">        8             venta_casas_chihuahua</span>
+<span class="sd">        9              venta_casas_coahuila</span>
+<span class="sd">        10               venta_casas_colima</span>
+<span class="sd">        11              venta_casas_durango</span>
+<span class="sd">        12               venta_casas_edomex</span>
+<span class="sd">        13           venta_casas_guanajuato</span>
+<span class="sd">        14             venta_casas_guerrero</span>
+<span class="sd">        15              venta_casas_hidalgo</span>
+<span class="sd">        16            venta_casas_michoacan</span>
+<span class="sd">        17              venta_casas_morelos</span>
+<span class="sd">        18              venta_casas_nayarit</span>
+<span class="sd">        19               venta_casas_oaxaca</span>
+<span class="sd">        20               venta_casas_puebla</span>
+<span class="sd">        21            venta_casas_queretaro</span>
+<span class="sd">        22         venta_casas_quintana_roo</span>
+<span class="sd">        23             venta_casas_san_luis</span>
+<span class="sd">        24              venta_casas_sinaloa</span>
+<span class="sd">        25               venta_casas_sonora</span>
+<span class="sd">        26              venta_casas_tabasco</span>
+<span class="sd">        27           venta_casas_tamaulipas</span>
+<span class="sd">        28             venta_casas_tlaxcala</span>
+<span class="sd">        29             venta_casas_veracruz</span>
+<span class="sd">        30              venta_casas_yucatan</span>
+<span class="sd">        31                venta_casas_texas</span>
+
+<span class="sd">    Todo:</span>
+<span class="sd">        * Support categories venta_departamentos</span>
+<span class="sd">        * Documentation</span>
+<span class="sd">        * Demo in iPython Notebooks</span>
+<span class="sd">        * Utility methods to clean the data (currency, publication date, etc.)</span>
+<span class="sd">        * Add tests</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialize the URLs of the ad categories and the verbose mode using</span>
+<span class="sd">        logging package.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># OrderedDict with</span>
+        <span class="c1"># key: the name of the category</span>
+        <span class="c1"># value: the url of the category and the method that converts an ad of</span>
+        <span class="c1"># that category into a DataFrame</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_categories</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">([</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_cdmx&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=1&amp;Plaza=1&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_nuevo_leon&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=2&amp;Plaza=2&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_jalisco&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=3&amp;Plaza=3&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_aguascalientes&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=4&amp;Plaza=4&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_baja_california&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=5&amp;Plaza=5&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_baja_california_sur&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=6&amp;Plaza=6&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_campeche&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=7&amp;Plaza=7&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_chiapas&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=8&amp;Plaza=8&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_chihuahua&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=9&amp;Plaza=9&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_coahuila&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=10&amp;Plaza=10&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_colima&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=11&amp;Plaza=11&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_durango&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=12&amp;Plaza=12&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_edomex&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=13&amp;Plaza=13&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_guanajuato&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=14&amp;Plaza=14&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_guerrero&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=15&amp;Plaza=15&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_hidalgo&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=16&amp;Plaza=16&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_michoacan&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=17&amp;Plaza=17&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_morelos&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=18&amp;Plaza=18&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_nayarit&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=19&amp;Plaza=19&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_oaxaca&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=20&amp;Plaza=20&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_puebla&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=21&amp;Plaza=21&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_queretaro&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=22&amp;Plaza=22&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_quintana_roo&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=23&amp;Plaza=23&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_san_luis&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=24&amp;Plaza=24&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_sinaloa&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=25&amp;Plaza=25&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_sonora&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=26&amp;Plaza=26&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_tabasco&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=27&amp;Plaza=27&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_tamaulipas&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=28&amp;Plaza=28&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_tlaxcala&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=29&amp;Plaza=29&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_veracruz&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=30&amp;Plaza=30&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_yucatan&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=31&amp;Plaza=31&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s1">&#39;venta_casas_texas&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;http://www.avisosdeocasion.com/Resultados-Inmuebles.aspx?&amp;PlazaBusqueda=34&amp;Plaza=34&amp;pagina=1&amp;idinmueble=3&#39;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_venta_casas_ad_to_df</span><span class="p">]),</span>
+        <span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s1">&#39;</span><span class="si">%(message)s</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s1">&#39;</span><span class="si">%(message)s</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span>
+            <span class="c1"># Setting it to logging.INFO shows many messages from http conns</span>
+
+    <span class="k">def</span> <span class="nf">_request_helper</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;This method makes a request to the server and there&#39;s a probability</span>
+<span class="sd">        that it makes a pause afterwards. If the request timeouts, it retries</span>
+<span class="sd">        the request multiple times with a longer pause in between.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            requests.models.Response</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">remaining_attempts</span> <span class="o">=</span> <span class="mi">10</span>
+        <span class="n">success</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">while</span> <span class="n">remaining_attempts</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">success</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">wait_time</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+                    <span class="n">logging</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Waiting &quot;</span><span class="p">,</span> <span class="n">wait_time</span><span class="p">,</span> <span class="s2">&quot; seconds&quot;</span><span class="p">)</span>
+                    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">wait_time</span><span class="p">)</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="c1"># Server denied request</span>
+                <span class="n">waiting_time</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">15</span><span class="p">)</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Server communication problem. Retrying in &quot;</span> <span class="o">+</span>
+                              <span class="nb">str</span><span class="p">(</span><span class="n">waiting_time</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39; seconds&#39;</span><span class="p">)</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">waiting_time</span><span class="p">)</span>
+                <span class="n">remaining_attempts</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">success</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">success</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;Server communication problem&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">response</span>
+
+    <span class="k">def</span> <span class="nf">_venta_casas_ad_to_df</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ad</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Uses regex to convert a string representation of an ad of category</span>
+<span class="sd">        venta_casas into a 1-row DataFrame. Missing values of the ad are going</span>
+<span class="sd">        to be set as None.</span>
+
+<span class="sd">        Parameters:</span>
+<span class="sd">            ad (str): String representation of an ad.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pandas.core.frame.DataFrame: A 1-row DataFrame with the ad.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">columns</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;precio&#39;</span><span class="p">,</span> <span class="s1">&#39;zona&#39;</span><span class="p">,</span> <span class="s1">&#39;colonia&#39;</span><span class="p">,</span> <span class="s1">&#39;visitas&#39;</span><span class="p">,</span> <span class="s1">&#39;plantas&#39;</span><span class="p">,</span>
+                   <span class="s1">&#39;m2_terreno&#39;</span><span class="p">,</span> <span class="s1">&#39;recámaras&#39;</span><span class="p">,</span> <span class="s1">&#39;baños&#39;</span><span class="p">,</span> <span class="s1">&#39;m2_constr&#39;</span><span class="p">,</span>
+                   <span class="s1">&#39;fecha_pub&#39;</span><span class="p">,</span> <span class="s1">&#39;latitude&#39;</span><span class="p">,</span> <span class="s1">&#39;longitude&#39;</span><span class="p">,</span> <span class="s1">&#39;url&#39;</span><span class="p">)</span>
+        <span class="c1"># Create a dummy dictionary with the columns as keys and None as value</span>
+        <span class="n">dictionary</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">(</span><span class="nb">zip</span><span class="p">([</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">],</span>
+                                     <span class="p">[</span><span class="kc">None</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">]))</span>
+
+        <span class="c1"># Identify the elements of the ad and create a dictionary with them</span>
+        <span class="c1"># Mind that some ads have missing elements in the website</span>
+
+        <span class="c1"># precio</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;\$([,0-9]+\s+\w*)&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;precio&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># zona</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;ZONA:\s+([\w ]+)&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;zona&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># colonia</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;COLONIA:\s+([\w ]+)&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;colonia&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># visitas</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;([\d,]+)\s+visitas&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;visitas&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># plantas</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;(\d+)\s+Planta&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;plantas&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># m2_terreno</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;([\d.]+)m²\s+de\s+Terreno&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;m2_terreno&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># recámaras</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;(\d+)\s+Recámara&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;recámaras&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># baños</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;([\d.]+)\s+Baño&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;baños&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># m2_constr</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;([\d.]+)m²\s+de\s+Construcción&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;m2_constr&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># fecha_pub</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;Publicado[\s\w]+( \d+ de \w+)</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;fecha_pub&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># latitude</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;latitude=([\d+-.]+)</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;latitude&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># longitude</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;longitude=([\d+-.]+)</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;longitude&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># url</span>
+        <span class="n">regex_ans</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;(http.+)</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">ad</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regex_ans</span><span class="p">:</span>
+            <span class="n">dictionary</span><span class="p">[</span><span class="s1">&#39;url&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regex_ans</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Convert the dictionary to DataFrame</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">(</span><span class="n">dictionary</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="kc">None</span><span class="p">])</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="p">[</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()]</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;timestamp&#39;</span>
+        <span class="k">return</span> <span class="n">df</span>
+
+    <span class="k">def</span> <span class="nf">_venta_departamentos_ad_to_df</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">_venta_terrenos_ad_to_df</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">_pages_of_ads</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">category</span><span class="p">,</span> <span class="n">initial_page</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Args:</span>
+<span class="sd">            category (str): The name of the category of ads.</span>
+<span class="sd">            initial_page (int): Initial page of ads to start the scrap.</span>
+
+<span class="sd">        Yields:</span>
+<span class="sd">            requests.models.Response: The next page of ads of the given</span>
+<span class="sd">                category.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">page_number</span> <span class="o">=</span> <span class="n">initial_page</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">url_of_category</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_categories</span><span class="p">[</span><span class="n">category</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">url_on_page</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s1">&#39;pagina=[\d]+&#39;</span><span class="p">,</span>
+                                 <span class="s1">&#39;pagina=&#39;</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">page_number</span><span class="p">),</span> <span class="n">url_of_category</span><span class="p">)</span>
+            <span class="n">page_number</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># Check if this is the last page of ads</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">page</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_request_helper</span><span class="p">(</span><span class="n">url_on_page</span><span class="p">)</span>
+                <span class="n">tree</span> <span class="o">=</span> <span class="n">html</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">page</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+                <span class="n">last_page_message</span> <span class="o">=</span> <span class="n">tree</span><span class="o">.</span><span class="n">xpath</span><span class="p">((</span><span class="s1">&#39;//div[@id=&quot;celda_rut1&quot;]&#39;</span>
+                                               <span class="s1">&#39;/text()&#39;</span><span class="p">))</span>
+                <span class="n">logging</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;Fetched &#39;</span> <span class="o">+</span> <span class="n">url_on_page</span><span class="p">)</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;Detection of last page of ads failed&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="s1">&#39;No se encontraron avisos&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">last_page_message</span><span class="p">):</span>
+                    <span class="k">yield</span> <span class="n">page</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Stop iteration</span>
+                    <span class="k">return</span>
+
+    <span class="k">def</span> <span class="nf">_ads_in_a_page</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">page</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Args:</span>
+<span class="sd">            page (requests.models.Response): the page from which the ads URLs</span>
+<span class="sd">                are to be extracted and in turn visted and scrapped as string.</span>
+
+<span class="sd">        Yields:</span>
+<span class="sd">            str: A string representation of the next ad in the page.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">page_soup</span> <span class="o">=</span> <span class="n">BeautifulSoup</span><span class="p">(</span><span class="n">page</span><span class="o">.</span><span class="n">text</span><span class="p">,</span> <span class="s1">&#39;html.parser&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">td</span> <span class="ow">in</span> <span class="n">page_soup</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="s1">&#39;td&#39;</span><span class="p">,</span> <span class="n">class_</span><span class="o">=</span><span class="s1">&#39;ar12grisb&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="s1">&#39;ar12gris&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">td</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;class&#39;</span><span class="p">)):</span>
+                <span class="k">continue</span>
+            <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="n">td</span><span class="p">:</span>
+                <span class="c1"># Use try-except because some td are empty</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">entry</span> <span class="o">=</span> <span class="n">elem</span><span class="o">.</span><span class="n">get_text</span><span class="p">()</span>
+                <span class="k">except</span><span class="p">:</span>
+                    <span class="k">pass</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="s1">&#39;$&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">entry</span><span class="p">:</span>
+                        <span class="c1"># This element in the td is not an ad, ommit it</span>
+                        <span class="k">continue</span>
+
+                    <span class="c1"># Because the website intentionally lists some ads</span>
+                    <span class="c1"># incomplete, it&#39;s needed to visit each ad to scrap it.</span>
+
+                    <span class="c1"># Get the url of the ad</span>
+                    <span class="n">ad_url</span> <span class="o">=</span> <span class="n">elem</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="s1">&#39;a&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;href&#39;</span><span class="p">)</span>
+
+                    <span class="n">ad_page</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_request_helper</span><span class="p">(</span><span class="n">ad_url</span><span class="p">)</span>
+                    <span class="n">ad_soup</span> <span class="o">=</span> <span class="n">BeautifulSoup</span><span class="p">(</span><span class="n">ad_page</span><span class="o">.</span><span class="n">text</span><span class="p">,</span> <span class="s1">&#39;html.parser&#39;</span><span class="p">)</span>
+                    <span class="n">ad_as_string</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+
+                    <span class="c1"># url of the ad</span>
+                    <span class="n">ad_as_string</span> <span class="o">+=</span> <span class="n">ad_url</span><span class="o">+</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+                    <span class="c1"># visitas</span>
+                    <span class="n">visitas</span> <span class="o">=</span> <span class="n">ad_soup</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="s1">&#39;div&#39;</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;pestanas&#39;</span><span class="p">)</span>
+                    <span class="n">ad_as_string</span> <span class="o">+=</span> <span class="n">visitas</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_text</span><span class="p">()</span><span class="o">+</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+                    <span class="c1"># zona, colonia and precio</span>
+                    <span class="n">header_zona_colonia_precio</span> <span class="o">=</span> <span class="n">ad_soup</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span>
+                        <span class="s1">&#39;div&#39;</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;highlights&#39;</span><span class="p">)</span>
+                    <span class="n">ad_as_string</span> <span class="o">+=</span> <span class="n">header_zona_colonia_precio</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_text</span><span class="p">()</span>
+                    <span class="n">ad_as_string</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+                    <span class="c1"># zona and estado</span>
+                    <span class="n">table</span> <span class="o">=</span> <span class="n">ad_soup</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="s1">&#39;table&#39;</span><span class="p">,</span> <span class="n">class_</span><span class="o">=</span><span class="s1">&#39;ar13gris&#39;</span><span class="p">)</span>
+                    <span class="n">info</span> <span class="o">=</span> <span class="n">table</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="s1">&#39;tr&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_text</span><span class="p">()</span>
+                    <span class="n">ad_as_string</span> <span class="o">+=</span> <span class="n">info</span> <span class="o">+</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+                    <span class="c1"># square meters and more details</span>
+                    <span class="k">for</span> <span class="n">td</span> <span class="ow">in</span> <span class="n">ad_soup</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="s1">&#39;td&#39;</span><span class="p">,</span> <span class="n">class_</span><span class="o">=</span><span class="s1">&#39;carac_td&#39;</span><span class="p">):</span>
+                        <span class="n">ad_as_string</span> <span class="o">+=</span> <span class="n">td</span><span class="o">.</span><span class="n">get_text</span><span class="p">()</span><span class="o">+</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+                    <span class="c1"># geolocation</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="k">for</span> <span class="n">div</span> <span class="ow">in</span> <span class="n">ad_soup</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="s1">&#39;div&#39;</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="s1">&#39;divMapa&#39;</span><span class="p">):</span>
+                            <span class="n">div_content</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">div</span><span class="p">)</span>
+                            <span class="k">if</span> <span class="s1">&#39;LatitudGM&#39;</span> <span class="ow">and</span> <span class="s1">&#39;LongitudGM&#39;</span> <span class="ow">in</span> <span class="n">div_content</span><span class="p">:</span>
+                                <span class="n">lat</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;LatitudGM=([\d+-.]+)&#39;</span><span class="p">,</span>
+                                                <span class="n">div_content</span><span class="p">)</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                                <span class="n">longit</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s1">&#39;LongitudGM=([\d+-.]+)&#39;</span><span class="p">,</span>
+                                                   <span class="n">div_content</span><span class="p">)</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                                <span class="n">ad_as_string</span> <span class="o">+=</span> <span class="s1">&#39;latitude=&#39;</span> <span class="o">+</span> <span class="n">lat</span> <span class="o">+</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+                                <span class="n">ad_as_string</span> <span class="o">+=</span> <span class="s1">&#39;longitude=&#39;</span> <span class="o">+</span> <span class="n">longit</span> <span class="o">+</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+                    <span class="k">except</span><span class="p">:</span>
+                        <span class="k">pass</span>
+                    <span class="k">yield</span> <span class="n">ad_as_string</span>
+
+    <span class="k">def</span> <span class="nf">_ad_to_dataframe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ad_text</span><span class="p">,</span> <span class="n">category</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Converts the ad of the given category to a 1-row DataFrame.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            ad_text (str): A string representation of an ad.</span>
+<span class="sd">            category (str): The name of the category of ads.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pandas.core.frame.DataFrame</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">method_to_call</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_categories</span><span class="p">[</span><span class="n">category</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">method_to_call</span><span class="p">(</span><span class="n">ad_text</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">df</span>
+
+<div class="viewcode-block" id="Scrapper.scrap"><a class="viewcode-back" href="../index.html#scrapper.Scrapper.scrap">[docs]</a>    <span class="k">def</span> <span class="nf">scrap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">category</span><span class="p">,</span> <span class="n">ad_limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">initial_page</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns a DataFrame with the information of the ads of the given</span>
+<span class="sd">        category.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            category (str): Name of the category of ads.</span>
+<span class="sd">            ad_limit (int): Number of ads to scrap.</span>
+<span class="sd">            initial_page (int): Initial page of ads to start the scrap.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            Exception: The given ad category is not supported.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pandas.core.frame.DataFrame: DataFrame with the scrapped ads.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">category</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_categories</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">((</span><span class="s1">&#39;Unrecognized category. &#39;</span>
+                             <span class="s1">&#39;Try the atribute </span><span class="se">\&#39;</span><span class="s1">categories</span><span class="se">\&#39;</span><span class="s1">&#39;</span><span class="p">))</span>
+
+        <span class="n">final_df</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">()</span>
+        <span class="n">scrapped_ads</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">remaining_ads</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Started web scraping&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">page</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pages_of_ads</span><span class="p">(</span><span class="n">category</span><span class="p">,</span> <span class="n">initial_page</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">remaining_ads</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="k">for</span> <span class="n">ad</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ads_in_a_page</span><span class="p">(</span><span class="n">page</span><span class="p">):</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">remaining_ads</span><span class="p">:</span>
+                    <span class="k">break</span>
+                <span class="n">single_ad</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ad_to_dataframe</span><span class="p">(</span><span class="n">ad</span><span class="p">,</span> <span class="n">category</span><span class="p">)</span>
+                <span class="n">final_df</span> <span class="o">=</span> <span class="n">final_df</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">single_ad</span><span class="p">)</span>
+                <span class="n">scrapped_ads</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Progress: </span><span class="si">%s</span><span class="s2"> scrapped ads</span><span class="se">\r</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">scrapped_ads</span><span class="p">)),</span>
+                      <span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">ad_limit</span> <span class="ow">and</span> <span class="n">scrapped_ads</span> <span class="o">&gt;=</span> <span class="n">ad_limit</span><span class="p">:</span>
+                    <span class="n">remaining_ads</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">break</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Finished web scraping&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">final_df</span></div>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">categories</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Returns a DataFrame with the supported categories to scrap ads.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            pandas.core.frame.DataFrame: DataFrame with the supported</span>
+<span class="sd">                categories.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;category&#39;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_categories</span><span class="o">.</span><span class="n">keys</span><span class="p">())})</span>
+        <span class="k">return</span> <span class="n">df</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper"><div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2017, Rafael Rodríguez Morales.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.4.6</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.9</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
